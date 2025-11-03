@@ -10,6 +10,7 @@ import {
   BarChart3,
   FolderKanban,
   LogOut,
+  UserCircle,
 } from "lucide-react";
 
 import {
@@ -21,6 +22,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
+  SidebarSeparator,
 } from "@/components/ui/sidebar";
 import { useSession, signOut } from "@/lib/auth/client";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -32,49 +34,107 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { WorkspaceSwitcher } from "@/components/workspace-switcher";
+import { CreateWorkspaceDialog } from "@/components/create-workspace-dialog";
+import { getMyWorkspaces } from "@/actions/workspaces";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
-const navItems = [
-  {
-    title: "Dashboard",
-    url: "/dashboard",
-    icon: LayoutDashboard,
-  },
-  {
-    title: "Projects",
-    url: "/dashboard/projects",
-    icon: FolderKanban,
-  },
-  {
-    title: "Team",
-    url: "/dashboard/team",
-    icon: Users,
-  },
-  {
-    title: "Analytics",
-    url: "/dashboard/analytics",
-    icon: BarChart3,
-  },
-  {
-    title: "Documents",
-    url: "/dashboard/documents",
-    icon: FileText,
-  },
-  {
-    title: "Settings",
-    url: "/dashboard/settings",
-    icon: Settings,
-  },
-];
+const getNavItems = (workspaceId?: string) => {
+  const baseUrl = workspaceId ? `/dashboard/${workspaceId}` : "/dashboard";
+
+  return [
+    {
+      title: "Dashboard",
+      url: baseUrl,
+      icon: LayoutDashboard,
+    },
+    {
+      title: "Projects",
+      url: `${baseUrl}/projects`,
+      icon: FolderKanban,
+    },
+    {
+      title: "Team",
+      url: `${baseUrl}/team`,
+      icon: Users,
+    },
+    {
+      title: "Analytics",
+      url: `${baseUrl}/analytics`,
+      icon: BarChart3,
+    },
+    {
+      title: "Documents",
+      url: `${baseUrl}/documents`,
+      icon: FileText,
+    },
+    {
+      title: "Settings",
+      url: `${baseUrl}/settings`,
+      icon: Settings,
+    },
+  ];
+};
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { data: session } = useSession();
   const pathname = usePathname();
+  const router = useRouter();
+  const [workspaces, setWorkspaces] = React.useState<any[]>([]);
+  const [currentWorkspaceId, setCurrentWorkspaceId] = React.useState<string>();
+  const [createDialogOpen, setCreateDialogOpen] = React.useState(false);
+  const [isLoadingWorkspaces, setIsLoadingWorkspaces] = React.useState(true);
+
+  React.useEffect(() => {
+    async function loadWorkspaces() {
+      setIsLoadingWorkspaces(true);
+      try {
+        const result = await getMyWorkspaces();
+        if (result.success && result.data) {
+          setWorkspaces(result.data);
+          // Set current workspace from pathname if available
+          const pathMatch = pathname.match(/\/dashboard\/([^\/]+)/);
+          if (pathMatch && pathMatch[1]) {
+            setCurrentWorkspaceId(pathMatch[1]);
+          } else if (result.data.length > 0) {
+            // Default to first workspace
+            setCurrentWorkspaceId(result.data[0].id);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load workspaces:", error);
+      } finally {
+        setIsLoadingWorkspaces(false);
+      }
+    }
+
+    if (session?.user) {
+      loadWorkspaces();
+    }
+  }, [session?.user, pathname]);
 
   const handleSignOut = async () => {
     await signOut();
     window.location.href = "/";
+  };
+
+  const handleWorkspaceChange = (workspaceId: string) => {
+    setCurrentWorkspaceId(workspaceId);
+    router.push(`/dashboard/${workspaceId}`);
+  };
+
+  const handleCreateWorkspaceSuccess = async () => {
+    // Reload workspaces after creating new one
+    const result = await getMyWorkspaces();
+    if (result.success && result.data) {
+      setWorkspaces(result.data);
+      // Navigate to newly created workspace (it will be last in array)
+      const newWorkspace = result.data[result.data.length - 1];
+      if (newWorkspace) {
+        handleWorkspaceChange(newWorkspace.id);
+      }
+    }
   };
 
   const getInitials = (name?: string | null) => {
@@ -107,10 +167,23 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
+        <SidebarSeparator className="my-2" />
+        <WorkspaceSwitcher
+          workspaces={workspaces}
+          currentWorkspaceId={currentWorkspaceId}
+          onWorkspaceChange={handleWorkspaceChange}
+          onCreateWorkspace={() => setCreateDialogOpen(true)}
+          isLoading={isLoadingWorkspaces}
+        />
+        <CreateWorkspaceDialog
+          open={createDialogOpen}
+          onOpenChange={setCreateDialogOpen}
+          onSuccess={handleCreateWorkspaceSuccess}
+        />
       </SidebarHeader>
       <SidebarContent>
         <SidebarMenu>
-          {navItems.map((item) => (
+          {getNavItems(currentWorkspaceId).map((item) => (
             <SidebarMenuItem key={item.title}>
               <SidebarMenuButton asChild isActive={pathname === item.url}>
                 <Link href={item.url}>
@@ -151,9 +224,15 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 <DropdownMenuLabel>My Account</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
-                  <Link href="/dashboard/settings">
+                  <Link href="/dashboard/profile">
+                    <UserCircle className="mr-2 h-4 w-4" />
+                    Profile
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href={`/dashboard/${currentWorkspaceId}/settings`}>
                     <Settings className="mr-2 h-4 w-4" />
-                    Settings
+                    Workspace Settings
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />

@@ -1,4 +1,5 @@
 import { pgTable, text, timestamp, varchar, jsonb, pgEnum } from "drizzle-orm/pg-core";
+import { relations } from "drizzle-orm";
 import { user } from "./auth";
 
 // Enum for workspace member roles
@@ -79,3 +80,51 @@ export const auditLogs = pgTable("audit_logs", {
   userAgent: text("userAgent"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
 });
+
+// Relations
+export const workspacesRelations = relations(workspaces, ({ one, many }) => ({
+  creator: one(user, {
+    fields: [workspaces.createdBy],
+    references: [user.id],
+  }),
+  members: many(workspaceMembers),
+  invitations: many(invitations),
+  auditLogs: many(auditLogs),
+}));
+
+export const workspaceMembersRelations = relations(workspaceMembers, ({ one }) => ({
+  workspace: one(workspaces, {
+    fields: [workspaceMembers.workspaceId],
+    references: [workspaces.id],
+  }),
+  user: one(user, {
+    fields: [workspaceMembers.userId],
+    references: [user.id],
+  }),
+  inviter: one(user, {
+    fields: [workspaceMembers.invitedBy],
+    references: [user.id],
+  }),
+}));
+
+export const invitationsRelations = relations(invitations, ({ one }) => ({
+  workspace: one(workspaces, {
+    fields: [invitations.workspaceId],
+    references: [workspaces.id],
+  }),
+  inviter: one(user, {
+    fields: [invitations.invitedBy],
+    references: [user.id],
+  }),
+}));
+
+export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
+  workspace: one(workspaces, {
+    fields: [auditLogs.workspaceId],
+    references: [workspaces.id],
+  }),
+  user: one(user, {
+    fields: [auditLogs.userId],
+    references: [user.id],
+  }),
+}));
